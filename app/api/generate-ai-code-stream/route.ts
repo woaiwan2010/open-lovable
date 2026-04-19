@@ -44,6 +44,12 @@ const openai = createOpenAI({
   baseURL: isUsingAIGateway ? aiGatewayBaseURL : process.env.OPENAI_BASE_URL,
 });
 
+// GLM provider - OpenAI-compatible API
+const glm = createOpenAI({
+  apiKey: process.env.GLM_API_KEY || '',
+  baseURL: process.env.GLM_BASE_URL || undefined,
+});
+
 // Helper function to analyze user preferences from conversation history
 function analyzeUserPreferences(messages: ConversationMessage[]): {
   commonPatterns: string[];
@@ -1217,10 +1223,13 @@ MORPH FAST APPLY MODE (EDIT-ONLY):
         const isGoogle = model.startsWith('google/');
         const isOpenAI = model.startsWith('openai/');
         const isKimiGroq = model === 'moonshotai/kimi-k2-instruct-0905';
+        const isGLM = model.startsWith('glm/');
         const modelProvider = isAnthropic ? anthropic : 
                               (isOpenAI ? openai : 
                               (isGoogle ? googleGenerativeAI : 
-                              (isKimiGroq ? groq : groq)));
+                              (isGLM ? glm :
+                              (isKimiGroq ? groq : groq))));
+
         
         // Fix model name transformation for different providers
         let actualModel: string;
@@ -1234,17 +1243,20 @@ MORPH FAST APPLY MODE (EDIT-ONLY):
         } else if (isGoogle) {
           // Google uses specific model names - convert our naming to theirs  
           actualModel = model.replace('google/', '');
+        } else if (isGLM) {
+          actualModel = model.replace('glm/', '');
         } else {
           actualModel = model;
         }
 
-        console.log(`[generate-ai-code-stream] Using provider: ${isAnthropic ? 'Anthropic' : isGoogle ? 'Google' : isOpenAI ? 'OpenAI' : 'Groq'}, model: ${actualModel}`);
+        console.log(`[generate-ai-code-stream] Using provider: ${isAnthropic ? 'Anthropic' : isGoogle ? 'Google' : isOpenAI ? 'OpenAI' : isGLM ? 'GLM' : 'Groq'}, model: ${actualModel}`);
         console.log(`[generate-ai-code-stream] AI Gateway enabled: ${isUsingAIGateway}`);
         console.log(`[generate-ai-code-stream] Model string: ${model}`);
 
         // Make streaming API call with appropriate provider
+        // GLM uses .chat() to force Chat Completions API (not Responses API)
         const streamOptions: any = {
-          model: modelProvider(actualModel),
+          model: isGLM ? glm.chat(actualModel) : modelProvider(actualModel),
           messages: [
             { 
               role: 'system', 

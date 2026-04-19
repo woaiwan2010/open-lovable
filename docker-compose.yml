@@ -1,0 +1,9 @@
+services:
+  app:
+    build: .
+    container_name: open-lovable-app
+    ports:
+      - "3000:3000"  # 飞牛NAS访问端口
+    restart: always
+    environment:
+      - NODE_ENV=production

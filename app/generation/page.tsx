@@ -2165,18 +2165,25 @@ Tip: I automatically detect and install npm packages from your code imports (lik
         headers: { 'Content-Type': 'application/json' }
       });
       
-      const data = await response.json();
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errData.error || `HTTP ${response.status}`);
+      }
       
-      if (data.success) {
+      const blob = await response.blob();
+      
+      if (blob.size > 0) {
         log('Zip file created!');
         addChatMessage('ZIP file created! Download starting...', 'system');
         
+        const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = data.dataUrl;
-        link.download = data.fileName || 'e2b-project.zip';
+        link.href = url;
+        link.download = 'project.zip';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
         
         addChatMessage(
           'Your Vite app has been downloaded! To run it locally:\n' +
@@ -2187,7 +2194,7 @@ Tip: I automatically detect and install npm packages from your code imports (lik
           'system'
         );
       } else {
-        throw new Error(data.error);
+        throw new Error('Downloaded file is empty');
       }
     } catch (error: any) {
       log(`Failed to create zip: ${error.message}`, 'error');

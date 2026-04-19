@@ -5,7 +5,7 @@ export const appConfig = {
   // Vercel Sandbox Configuration
   vercelSandbox: {
     // Sandbox timeout in minutes
-    timeoutMinutes: 15,
+    timeoutMinutes: 60,
 
     // Convert to milliseconds for Vercel Sandbox API
     get timeoutMs() {
@@ -31,7 +31,7 @@ export const appConfig = {
   // E2B Sandbox Configuration
   e2b: {
     // Sandbox timeout in minutes
-    timeoutMinutes: 30,
+    timeoutMinutes: 60,
 
     // Convert to milliseconds for E2B API
     get timeoutMs() {
@@ -51,19 +51,27 @@ export const appConfig = {
   // AI Model Configuration
   ai: {
     // Default AI model
-    defaultModel: 'google/gemini-3-pro-preview',
+    defaultModel: 'glm/glm-5.1',
     
     // Available models
     availableModels: [
+      'glm/glm-5.1',
       'openai/gpt-5',
+      'openai/gpt-4',
       'moonshotai/kimi-k2-instruct-0905',
       'anthropic/claude-sonnet-4-20250514',
-      'google/gemini-3-pro-preview'
+      'google/gemini-3-pro-preview',
+      'google/gemini-3-flash',
+      'google/gemini-2.5-flash',
+      'qwen/qwen3-32b'
+
     ],
     
     // Model display names
     modelDisplayNames: {
+      'glm/glm-5.1': 'GLM-5.1',
       'openai/gpt-5': 'GPT-5',
+      'openai/gpt-4': 'GPT-4',
       'moonshotai/kimi-k2-instruct-0905': 'Kimi K2 (Groq)',
       'anthropic/claude-sonnet-4-20250514': 'Sonnet 4',
       'google/gemini-3-pro-preview': 'Gemini 3 Pro (Preview)'
@@ -71,6 +79,10 @@ export const appConfig = {
     
     // Model API configuration
     modelApiConfig: {
+      'glm/glm-5.1': {
+        provider: 'glm',
+        model: 'glm-5.1'
+      },
       'moonshotai/kimi-k2-instruct-0905': {
         provider: 'groq',
         model: 'moonshotai/kimi-k2-instruct-0905'

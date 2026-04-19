@@ -1,60 +1,92 @@
 import { NextResponse } from 'next/server';
+import JSZip from 'jszip';
 
 declare global {
   var activeSandbox: any;
+  var activeSandboxProvider: any;
+}
+
+// Get the sandbox provider (V2) or raw sandbox
+function getSandboxProvider(): any {
+  if (global.sandboxState?.sandbox) return global.sandboxState.sandbox;
+  if (global.activeSandboxProvider) return global.activeSandboxProvider;
+  return null;
 }
 
 export async function POST() {
   try {
-    if (!global.activeSandbox) {
+    const provider = getSandboxProvider();
+    
+    if (!provider) {
       return NextResponse.json({ 
         success: false, 
         error: 'No active sandbox' 
       }, { status: 400 });
     }
     
-    console.log('[create-zip] Creating project zip...');
+    console.log('[create-zip] Collecting all files from sandbox via provider API...');
     
-    // Create zip file in sandbox using standard commands
-    const zipResult = await global.activeSandbox.runCommand({
-      cmd: 'bash',
-      args: ['-c', `zip -r /tmp/project.zip . -x "node_modules/*" ".git/*" ".next/*" "dist/*" "build/*" "*.log"`]
-    });
-    
-    if (zipResult.exitCode !== 0) {
-      const error = await zipResult.stderr();
-      throw new Error(`Failed to create zip: ${error}`);
+    // Step 1: List all files using provider API
+    let fileList: string[] = [];
+    try {
+      fileList = await provider.listFiles();
+      console.log(`[create-zip] listFiles returned ${fileList.length} files`);
+    } catch (e) {
+      console.error('[create-zip] listFiles failed:', e);
     }
     
-    const sizeResult = await global.activeSandbox.runCommand({
-      cmd: 'bash',
-      args: ['-c', `ls -la /tmp/project.zip | awk '{print $5}'`]
-    });
+    // Step 2: Read each file via provider API
+    const allFiles: Record<string, string> = {};
     
-    const fileSize = await sizeResult.stdout();
-    console.log(`[create-zip] Created project.zip (${fileSize.trim()} bytes)`);
-    
-    // Read the zip file and convert to base64
-    const readResult = await global.activeSandbox.runCommand({
-      cmd: 'base64',
-      args: ['/tmp/project.zip']
-    });
-    
-    if (readResult.exitCode !== 0) {
-      const error = await readResult.stderr();
-      throw new Error(`Failed to read zip file: ${error}`);
+    for (const filePath of fileList) {
+      if (!filePath) continue;
+      if (/\.(png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot|mp4|webm|webp|lock)$/i.test(filePath)) continue;
+      
+      try {
+        const content = await provider.readFile(filePath);
+        if (content != null) {
+          allFiles[filePath] = content;
+        }
+      } catch (e) {
+        // Skip files that can't be read
+      }
     }
     
-    const base64Content = (await readResult.stdout()).trim();
+    // Step 3: Override with cached files (more up-to-date)
+    const cachedFiles = global.sandboxState?.fileCache?.files || {};
+    for (const [path, data] of Object.entries(cachedFiles)) {
+      const fileData = data as any;
+      if (!fileData?.content) continue;
+      const normalizedPath = path.replace(/^\/vercel\/sandbox\//, '').replace(/^\//, '');
+      allFiles[normalizedPath] = fileData.content;
+    }
     
-    // Create a data URL for download
-    const dataUrl = `data:application/zip;base64,${base64Content}`;
+    const totalFiles = Object.keys(allFiles).length;
+    console.log(`[create-zip] Total files to zip: ${totalFiles}`);
     
-    return NextResponse.json({
-      success: true,
-      dataUrl,
-      fileName: 'vercel-sandbox-project.zip',
-      message: 'Zip file created successfully'
+    if (totalFiles === 0) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'No files found' 
+      }, { status: 400 });
+    }
+    
+    // Step 4: Build ZIP
+    const zip = new JSZip();
+    for (const [filePath, content] of Object.entries(allFiles)) {
+      zip.file(filePath, content);
+    }
+    
+    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+    console.log(`[create-zip] ZIP created: ${zipBuffer.length} bytes, ${totalFiles} files`);
+    
+    return new Response(zipBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': 'attachment; filename="project.zip"',
+        'Content-Length': zipBuffer.length.toString(),
+      },
     });
     
   } catch (error) {

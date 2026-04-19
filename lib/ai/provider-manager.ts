@@ -4,7 +4,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 
-type ProviderName = 'openai' | 'anthropic' | 'groq' | 'google';
+type ProviderName = 'openai' | 'anthropic' | 'groq' | 'google' | 'glm';
 
 // Client function type returned by @ai-sdk providers
 export type ProviderClient =
@@ -40,6 +40,8 @@ function getEnvDefaults(provider: ProviderName): { apiKey?: string; baseURL?: st
       return { apiKey: process.env.GROQ_API_KEY, baseURL: process.env.GROQ_BASE_URL };
     case 'google':
       return { apiKey: process.env.GEMINI_API_KEY, baseURL: process.env.GEMINI_BASE_URL };
+    case 'glm':
+      return { apiKey: process.env.GLM_API_KEY, baseURL: process.env.GLM_BASE_URL };
     default:
       return {};
   }
@@ -68,6 +70,19 @@ function getOrCreateClient(provider: ProviderName, apiKey?: string, baseURL?: st
     case 'google':
       client = createGoogleGenerativeAI({ apiKey: effective.apiKey || getEnvDefaults('google').apiKey, baseURL: effective.baseURL ?? getEnvDefaults('google').baseURL });
       break;
+    case 'glm': {
+      const glmFetch: typeof globalThis.fetch = (input, init) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+        const fixedUrl = url.replace(/\/responses$/, '');
+        return globalThis.fetch(typeof input === 'string' ? fixedUrl : input instanceof URL ? new URL(fixedUrl) : input, init);
+      };
+      client = createOpenAI({
+        apiKey: effective.apiKey || getEnvDefaults('glm').apiKey,
+        baseURL: effective.baseURL ?? getEnvDefaults('glm').baseURL,
+        fetch: glmFetch
+      });
+      break;
+    }
     default:
       client = createGroq({ apiKey: effective.apiKey || getEnvDefaults('groq').apiKey, baseURL: effective.baseURL ?? getEnvDefaults('groq').baseURL });
   }
@@ -80,8 +95,8 @@ export function getProviderForModel(modelId: string): ProviderResolution {
   // 1) Check explicit model configuration in app config (custom models)
   const configured = appConfig.ai.modelApiConfig?.[modelId as keyof typeof appConfig.ai.modelApiConfig];
   if (configured) {
-    const { provider, apiKey, baseURL, model } = configured as { provider: ProviderName; apiKey?: string; baseURL?: string; model: string };
-    const client = getOrCreateClient(provider, apiKey, baseURL);
+    const { provider, model } = configured as { provider: ProviderName; model: string };
+    const client = getOrCreateClient(provider);
     return { client, actualModel: model };
   }
 
@@ -90,6 +105,12 @@ export function getProviderForModel(modelId: string): ProviderResolution {
   const isOpenAI = modelId.startsWith('openai/');
   const isGoogle = modelId.startsWith('google/');
   const isKimiGroq = modelId === 'moonshotai/kimi-k2-instruct-0905';
+  const isGLM = modelId.startsWith('glm/');
+
+  if (isGLM) {
+    const client = getOrCreateClient('glm');
+    return { client, actualModel: modelId.replace('glm/', '') };
+  }
 
   if (isKimiGroq) {
     const client = getOrCreateClient('groq');
